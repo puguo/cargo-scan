@@ -1,3 +1,4 @@
+use ra_ap_syntax::Edition;
 use ra_ap_syntax::{SourceFile, SyntaxKind, SyntaxToken};
 use std::sync::Arc;
 
@@ -51,7 +52,7 @@ impl OffsetMapping {
 }
 
 fn parse_tokens(code: &str) -> Vec<SyntaxToken> {
-    let parse = SourceFile::parse(code);
+    let parse = SourceFile::parse(code, Edition::CURRENT);
     let node = parse.syntax_node();
     node.descendants_with_tokens()
         .filter_map(|e| e.into_token())

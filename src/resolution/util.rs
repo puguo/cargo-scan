@@ -4,19 +4,21 @@ use ra_ap_hir_expand::InFile;
 
 use crate::ident::{CanonicalPath, CanonicalType, Ident, TypeKind};
 
-use ra_ap_hir::{GenericParam, HasSource, Module, Semantics, VariantDef};
+use ra_ap_hir::{
+    GenericParam, HasSource, HirFileId, InFileWrapper, Module, Semantics, VariantDef,
+};
 
 use ra_ap_ide::{RootDatabase, TextSize};
 use ra_ap_ide_db::base_db::SourceDatabase;
 use ra_ap_ide_db::defs::Definition;
-
+use ra_ap_ide_db::EditionedFileId;
 use ra_ap_syntax::{SyntaxNode, SyntaxToken, TokenAtOffset};
 
 // latest rust-analyzer has removed Display for Name, see
 // https://docs.rs/ra_ap_hir/latest/ra_ap_hir/struct.Name.html#
 // This is a wrapper function to recover the .to_string() implementation
 fn name_to_string(n: ra_ap_hir::Name) -> String {
-    n.to_smol_str().to_string()
+    n.as_str().to_string()
 }
 
 pub(super) fn get_token(
@@ -139,6 +141,11 @@ pub(super) fn get_canonical_type(
     Ok(CanonicalType::new(ty_kind))
 }
 
+fn wrap(src: InFileWrapper<EditionedFileId, SyntaxNode>) -> InFile<SyntaxNode> {
+    let file_id = HirFileId::from(src.file_id);
+    InFile::new(file_id, src.value.clone())
+}
+
 /// Get source node from the original source  
 /// file for the given definition.
 pub(super) fn syntax_node_from_def(
@@ -146,20 +153,58 @@ pub(super) fn syntax_node_from_def(
     db: &RootDatabase,
 ) -> Option<InFile<SyntaxNode>> {
     match def {
-        Definition::Function(x) => x.source(db)?.syntax().original_syntax_node(db),
-        Definition::Adt(x) => x.source(db)?.syntax().original_syntax_node(db),
-        Definition::Variant(x) => x.source(db)?.syntax().original_syntax_node(db),
-        Definition::Const(x) => x.source(db)?.syntax().original_syntax_node(db),
-        Definition::Static(x) => x.source(db)?.syntax().original_syntax_node(db),
-        Definition::Trait(x) => x.source(db)?.syntax().original_syntax_node(db),
-        Definition::TraitAlias(x) => x.source(db)?.syntax().original_syntax_node(db),
-        Definition::TypeAlias(x) => x.source(db)?.syntax().original_syntax_node(db),
-        Definition::SelfType(x) => x.source(db)?.syntax().original_syntax_node(db),
-        Definition::Local(x) => {
-            x.primary_source(db).source(db)?.syntax().original_syntax_node(db)
+        Definition::Function(x) => {
+            let src = x.source(db)?.syntax().original_syntax_node_rooted(db)?;
+            Some(wrap(src))
         }
-        Definition::Label(x) => x.source(db).syntax().original_syntax_node(db),
-        Definition::ExternCrateDecl(x) => x.source(db)?.syntax().original_syntax_node(db),
+        Definition::Adt(x) => {
+            let src = x.source(db)?.syntax().original_syntax_node_rooted(db)?;
+            Some(wrap(src))
+        }
+        Definition::Variant(x) => {
+            let src = x.source(db)?.syntax().original_syntax_node_rooted(db)?;
+            Some(wrap(src))
+        }
+        Definition::Const(x) => {
+            let src = x.source(db)?.syntax().original_syntax_node_rooted(db)?;
+            Some(wrap(src))
+        }
+        Definition::Static(x) => {
+            let src = x.source(db)?.syntax().original_syntax_node_rooted(db)?;
+            Some(wrap(src))
+        }
+        Definition::Trait(x) => {
+            let src = x.source(db)?.syntax().original_syntax_node_rooted(db)?;
+            Some(wrap(src))
+        }
+        Definition::TraitAlias(x) => {
+            let src = x.source(db)?.syntax().original_syntax_node_rooted(db)?;
+            Some(wrap(src))
+        }
+        Definition::TypeAlias(x) => {
+            let src = x.source(db)?.syntax().original_syntax_node_rooted(db)?;
+            Some(wrap(src))
+        }
+        Definition::SelfType(x) => {
+            let src = x.source(db)?.syntax().original_syntax_node_rooted(db)?;
+            Some(wrap(src))
+        }
+        Definition::Local(x) => {
+            let src = x
+                .primary_source(db)
+                .source(db)?
+                .syntax()
+                .original_syntax_node_rooted(db)?;
+            Some(wrap(src))
+        }
+        Definition::Label(x) => {
+            let src = x.source(db)?.syntax().original_syntax_node_rooted(db)?;
+            Some(wrap(src))
+        }
+        Definition::ExternCrateDecl(x) => {
+            let src = x.source(db)?.syntax().original_syntax_node_rooted(db)?;
+            Some(wrap(src))
+        }
         _ => None,
     }
 }

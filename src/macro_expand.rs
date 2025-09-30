@@ -7,12 +7,15 @@ use crate::scanner::{ScanResults, Scanner};
 use anyhow::{anyhow, Context, Result};
 use log::debug;
 use ra_ap_hir::db::ExpandDatabase;
-use ra_ap_ide::LineIndex;
+use ra_ap_hir::HirFileId;
 use ra_ap_ide::RootDatabase;
-use ra_ap_ide_db::base_db::SourceDatabaseExt;
+use ra_ap_ide::{Edition, LineIndex};
+use ra_ap_ide_db::base_db::SourceDatabase;
 use ra_ap_ide_db::syntax_helpers::insert_whitespace_into_node::insert_ws_into;
+use ra_ap_ide_db::EditionedFileId;
 use ra_ap_syntax::ast::MacroCall;
 use ra_ap_syntax::{AstNode, SyntaxKind, SyntaxNode};
+use ra_ap_toolchain::Tool;
 use ra_ap_vfs::FileId;
 use std::collections::{HashMap, HashSet};
 use std::path::Path as FilePath;
@@ -76,7 +79,9 @@ pub fn handle_macro_expansion(
 ) -> Result<()> {
     let current_file_id =
         resolver.find_file_id(filepath).context("cannot find current file id")?;
-    let syntax = resolver.db().parse_or_expand(current_file_id.into());
+    let eid = EditionedFileId::new(current_file_id, Edition::CURRENT);
+    let hir_file_id = HirFileId::from(eid);
+    let syntax = resolver.db().parse_or_expand(hir_file_id);
     let file_resolver_expand = FileResolver::new(crate_name, resolver, filepath, None)?;
     let ignored_macros: HashSet<&str> = IGNORED_MACROS.iter().cloned().collect();
     for macro_call in find_macro_calls(&syntax) {
@@ -186,7 +191,7 @@ fn _format(
     let &crate_id = db.relevant_crates(file_id).iter().next()?;
     let edition = db.crate_graph()[crate_id].edition;
 
-    let mut cmd = std::process::Command::new(ra_ap_toolchain::rustfmt());
+    let mut cmd = std::process::Command::new(Tool::Rustfmt.path());
     cmd.arg("--edition");
     cmd.arg(edition.to_string());
 

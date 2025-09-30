@@ -12,7 +12,9 @@ use crate::effect::SrcLoc;
 use crate::ident::{CanonicalPath, CanonicalType, Ident};
 use crate::offset_maping::MacroExpansionContext;
 
-use ra_ap_hir::{AssocItem, CfgAtom, Crate, HirFileId, Impl, Semantics};
+use ra_ap_hir::{
+    AssocItem, CfgAtom, Crate, DescendPreference, HirFileId, Impl, Semantics, Symbol,
+};
 use ra_ap_hir_def::db::DefDatabase;
 use ra_ap_hir_def::{FunctionId, Lookup};
 use ra_ap_ide::{
@@ -69,11 +71,13 @@ impl Resolver {
 
         // Disable '#[cfg(test)]' in all crates of the workspace
         let disabled_cfgs =
-            CfgDiff::new(vec![], vec![CfgAtom::Flag("test".into())]).unwrap_or_default();
+            CfgDiff::new(vec![], vec![CfgAtom::Flag(Symbol::intern("test"))])
+                .unwrap_or_default();
         let cfg_overrides =
             CfgOverrides { global: disabled_cfgs, selective: Default::default() };
 
         CargoConfig {
+            all_targets: true,
             features,
             target,
             sysroot,
@@ -113,7 +117,7 @@ impl Resolver {
             prefill_caches: true,
         };
 
-        let (host, vfs, _) = ra_ap_load_cargo::load_workspace_at(
+        let (db, vfs, _) = ra_ap_load_cargo::load_workspace_at(
             crate_path,
             cargo_config,
             &load_config,
@@ -121,6 +125,8 @@ impl Resolver {
         )?;
 
         debug!("...created");
+        let mut host = AnalysisHost::new(Some(128));
+        *host.raw_database_mut() = db;
 
         Ok(Resolver {
             host,
@@ -177,7 +183,8 @@ impl Resolver {
                 .ok_or_else(|| anyhow!("Could not find offset for macro"))
         } else {
             let original_file_id = file_id.file_id().unwrap();
-            let line_index = self.host.analysis().file_line_index(original_file_id)?;
+            let line_index =
+                self.host.analysis().file_line_index(original_file_id.into())?;
             line_index
                 .offset(line_col)
                 .ok_or_else(|| anyhow!("Could not find offset in normal file"))
@@ -198,9 +205,12 @@ impl Resolver {
 
         if let Some(crate_) = crate_ {
             let enabled_opts = crate_.cfg(db);
-            for key in enabled_opts.get_cfg_keys() {
-                let cfg_values = enabled_opts.get_cfg_values(key).map(|x| x.to_string());
-                crate_opts.insert(key.to_string(), Vec::from_iter(cfg_values));
+            for key_sym in enabled_opts.get_cfg_keys() {
+                let key_str = key_sym.as_str();
+                let cfg_values = enabled_opts
+                    .get_cfg_values(key_str)
+                    .map(|sym| sym.as_str().to_string());
+                crate_opts.insert(key_str.to_string(), cfg_values.collect());
             }
         } else {
             return Err(anyhow!("Could not get cfg options for crate: {:?}", name));
@@ -286,22 +296,17 @@ impl<'a> ResolverImpl<'a> {
 
     fn find_def(&self, token: &SyntaxToken) -> Result<Definition> {
         // For ra_ap_syntax::TextSize, using default, idk if this is correct
-        let text_size = Default::default();
-        self.sems
-            .descend_into_macros(token.clone(), text_size)
+        let descended =
+            self.sems.descend_into_macros(DescendPreference::None, token.clone());
+        descended
             .iter()
             .filter_map(|t| {
-                // 'IdentClass::classify_token' might return two definitions
-                // due to field shorthand syntax, which uses a single
-                // reference to point to two different defs.
-                // We only care about the first one, which corresponds to a
-                // local definition.
                 IdentClass::classify_token(&self.sems, t)?.definitions().pop_at(0)
             })
             .exactly_one()
             .or(Err(anyhow!(
                 "Could not classify token {:?}. Diagnostics: {:?}",
-                token.to_string(),
+                token.text(),
                 self.get_token_diagnostics(token)
             )))
     }
@@ -321,7 +326,7 @@ impl<'a> ResolverImpl<'a> {
         self.file_diags
             .iter()
             .filter(|d| {
-                d.range.contains_range(token.text_range())
+                d.range.range.contains_range(token.text_range())
                     || d.code.as_str().eq_ignore_ascii_case("unlinked-file")
             })
             .map(|d| d.code.as_str().to_string())
@@ -389,7 +394,7 @@ impl<'a> ResolverImpl<'a> {
         if let Definition::Function(f) = def {
             let func_id = FunctionId::from(f);
             let data = self.db.function_data(func_id);
-            Ok(data.has_unsafe_kw())
+            Ok(data.is_unsafe())
         } else {
             Ok(false)
         }

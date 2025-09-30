@@ -12,6 +12,8 @@ use crate::ident::{CanonicalPath, CanonicalType, Ident};
 use anyhow::Result;
 use log::debug;
 use ra_ap_hir::HirFileId;
+use ra_ap_ide::Edition;
+use ra_ap_ide_db::EditionedFileId;
 use ra_ap_syntax::ast::MacroCall;
 use ra_ap_syntax::SyntaxNode;
 use std::fmt::Display;
@@ -96,7 +98,7 @@ impl<'a> FileResolver<'a> {
             Some(id) => id,
             None => {
                 let fid = resolver.find_file_id(filepath)?;
-                fid.into() //
+                HirFileId::from(EditionedFileId::new(fid, Edition::CURRENT))
             }
         };
         let imp = ResolverImpl::new(resolver, file_id)?;

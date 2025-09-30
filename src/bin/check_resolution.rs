@@ -16,6 +16,9 @@ use cargo_scan::{
     resolution::name_resolution::{Resolver, ResolverImpl},
 };
 use clap::Parser;
+use ra_ap_hir::HirFileId;
+use ra_ap_ide::Edition;
+use ra_ap_ide_db::EditionedFileId;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -44,7 +47,8 @@ pub fn main() -> Result<()> {
 
     let resolver = Resolver::new(&args.crate_path)?;
     let file_id = resolver.find_file_id(&filepath)?;
-    let file_resolver = ResolverImpl::new(&resolver, file_id.into())?;
+    let hir_file_id = HirFileId::from(EditionedFileId::new(file_id, Edition::CURRENT));
+    let file_resolver = ResolverImpl::new(&resolver, hir_file_id)?;
 
     let s = SrcLoc::new(filepath.as_path(), args.line, args.col, args.line, args.col);
     let i = Ident::new(&args.name);
